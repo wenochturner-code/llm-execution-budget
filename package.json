@@ -1,32 +1,30 @@
 {
   "name": "llm-execution-budget",
-  "version": "0.1.0",
-  "description": "A circuit breaker for LLM calls. Stops runaway loops and enforces token budgets.",
+  "version": "0.2.0",
+  "description": "Minimal control-plane primitive for limiting LLM execution costs.",
+  "license": "MIT",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/src/index.js",
-      "types": "./dist/src/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
-    "examples:basic": "npm run build && node dist/examples/basic-chat.js",
-    "examples:runaway": "npm run build && node dist/examples/runaway-loop.js",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "openai": "^4.0.0"
+    "test": "tsx --test",
+    "prepublishOnly": "npm run test && npm run build"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
   },
   "engines": {
     "node": ">=18"

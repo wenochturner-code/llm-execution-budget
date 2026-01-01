@@ -1,67 +1,28 @@
-// src/types.ts
-// Types only. No logic. Keep it boring.
+export type BudgetReason = "TIMEOUT" | "STEP_LIMIT" | "TOOL_LIMIT" | "TOKEN_LIMIT" | "USAGE_UNAVAILABLE";
 
-export type ExecutionId = string;
-
-export interface GuardConfig {
-  /** Amplification multiplier (budget = k * inputTokens + floorTokens) */
-  k: number;
-
-  /** Minimum budget added on top of k*inputTokens */
-  floorTokens: number;
-
-  /** Max OpenAI calls allowed within one execution */
+export interface BudgetLimits {
+  executionId?: string;
   maxSteps: number;
-
-  /** Hard cap on per-call output tokens */
+  maxToolCalls: number;
+  timeoutMs: number;
   maxOutputTokens: number;
-}
-
-export interface ExecutionInit {
-  /** Optional external id; if omitted, the SDK will generate one in startExecution() */
-  executionId?: ExecutionId;
-
-  /** Initial input token count for the user request (baseline) */
-  inputTokens: number;
-
-  /** Optional overrides; merged onto DEFAULT_CONFIG */
-  config?: Partial<GuardConfig>;
+  maxTokens: number;
+  tokenAccountingMode?: "fail-open" | "fail-closed";
 }
 
 export interface BudgetSnapshot {
-  executionId: ExecutionId;
-
-  inputTokens: number;
-
-  budgetTokens: number;
-
-  spentTokens: number;
-
-  remainingTokens: number;
-
   stepsUsed: number;
-
   maxSteps: number;
-
-  maxOutputTokens: number;
-
-  k: number;
-
-  floorTokens: number;
+  toolCallsUsed: number;
+  maxToolCalls: number;
+  tokensUsed: number;
+  maxTokens: number;
+  overshoot?: number;
+  elapsedMs: number;
+  timeoutMs: number;
+  tokenAccountingReliable: boolean;
 }
 
-export interface UsageDelta {
-  /** Input tokens billed for this call */
-  inputTokens: number;
-
-  /** Output tokens billed for this call */
-  outputTokens: number;
-
-  /** Total tokens billed for this call */
-  totalTokens: number;
-
-  /** Optional; do not use for enforcement in v0 */
-  cachedInputTokens?: number;
+export interface Budget {
+  recordToolCall(): void;
 }
-
-export type StopReason = "BUDGET_EXCEEDED" | "STEP_LIMIT_EXCEEDED";

@@ -1,99 +1,100 @@
-// src/budget.ts
-// Budget state machine. Pure and boring.
+import type { Budget, BudgetLimits, BudgetReason, BudgetSnapshot } from "./types.js";
+import { BudgetError } from "./errors.js";
 
-import type {
-  ExecutionId,
-  GuardConfig,
-  ExecutionInit,
-  BudgetSnapshot,
-  UsageDelta,
-} from "./types.js";
-
-export const DEFAULT_CONFIG: GuardConfig = {
-  k: 25,
-  floorTokens: 4000,
-  maxSteps: 25,
-  maxOutputTokens: 2048,
-};
-
-function generateExecutionId(): ExecutionId {
-  // Deterministic enough for v0; caller can override.
-  return `exec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+export interface BudgetState {
+  stepsUsed: number;
+  toolCallsUsed: number;
+  tokensUsed: number;
+  startTime: number;
+  terminatedReason: BudgetReason | null;
+  terminatedSnapshot: BudgetSnapshot | null;
+  tokenAccountingReliable: boolean;
 }
 
-export class ExecutionBudget {
-  public readonly executionId: ExecutionId;
-  public readonly config: GuardConfig;
-
-  public readonly inputTokens: number;
-  public readonly budgetTokens: number;
-
-  private _spentTokens = 0;
-  private _stepsUsed = 0;
-
-  constructor(args: {
-    executionId: ExecutionId;
-    inputTokens: number;
-    config: GuardConfig;
-  }) {
-    this.executionId = args.executionId;
-    this.inputTokens = args.inputTokens;
-    this.config = args.config;
-
-    this.budgetTokens =
-      this.config.k * this.inputTokens + this.config.floorTokens;
-  }
-
-  incrementStep(): void {
-    this._stepsUsed += 1;
-  }
-
-  charge(delta: UsageDelta): void {
-    this._spentTokens += delta.totalTokens;
-  }
-
-  isExceeded(): boolean {
-    return this._spentTokens > this.budgetTokens;
-  }
-
-  remaining(): number {
-    return Math.max(0, this.budgetTokens - this._spentTokens);
-  }
-
-  snapshot(): BudgetSnapshot {
-    return {
-      executionId: this.executionId,
-      inputTokens: this.inputTokens,
-      budgetTokens: this.budgetTokens,
-      spentTokens: this._spentTokens,
-      remainingTokens: this.remaining(),
-      stepsUsed: this._stepsUsed,
-      maxSteps: this.config.maxSteps,
-      maxOutputTokens: this.config.maxOutputTokens,
-      k: this.config.k,
-      floorTokens: this.config.floorTokens,
-    };
-  }
-
-  get spentTokens(): number {
-    return this._spentTokens;
-  }
-
-  get stepsUsed(): number {
-    return this._stepsUsed;
-  }
+export interface BudgetInternals {
+  limits: BudgetLimits;
+  state: BudgetState;
+  now: () => number;
 }
 
-export function startExecution(init: ExecutionInit): ExecutionBudget {
-  const executionId = init.executionId ?? generateExecutionId();
-  const config: GuardConfig = {
-    ...DEFAULT_CONFIG,
-    ...(init.config ?? {}),
+const budgetInternals = new WeakMap<Budget, BudgetInternals>();
+
+export function getInternals(budget: Budget): BudgetInternals {
+  const internals = budgetInternals.get(budget);
+  if (!internals) throw new Error("Invalid budget");
+  return internals;
+}
+
+export function createSnapshot(internals: BudgetInternals, overshoot?: number): BudgetSnapshot {
+  const { limits, state, now } = internals;
+  return {
+    stepsUsed: state.stepsUsed,
+    maxSteps: limits.maxSteps,
+    toolCallsUsed: state.toolCallsUsed,
+    maxToolCalls: limits.maxToolCalls,
+    tokensUsed: state.tokensUsed,
+    maxTokens: limits.maxTokens,
+    overshoot,
+    elapsedMs: now() - state.startTime,
+    timeoutMs: limits.timeoutMs,
+    tokenAccountingReliable: state.tokenAccountingReliable,
+  };
+}
+
+export function createBudget(
+  limits: BudgetLimits,
+  now: () => number = Date.now
+): Budget {
+  const state: BudgetState = {
+    stepsUsed: 0,
+    toolCallsUsed: 0,
+    tokensUsed: 0,
+    startTime: now(),
+    terminatedReason: null,
+    terminatedSnapshot: null,
+    tokenAccountingReliable: true,
   };
 
-  return new ExecutionBudget({
-    executionId,
-    inputTokens: init.inputTokens,
-    config,
-  });
+  const budget: Budget = {
+    recordToolCall() {
+      const internals = getInternals(this);
+      const { limits, state, now } = internals;
+      const elapsed = now() - state.startTime;
+
+      // Precedence order: TIMEOUT > TOOL_LIMIT > TOKEN_LIMIT
+
+      // 1. Check timeout
+      if (elapsed >= limits.timeoutMs) {
+        throw new BudgetError(
+          "TIMEOUT",
+          createSnapshot(internals),
+          limits.executionId
+        );
+      }
+
+      // 2. Check tool limit
+      if (state.toolCallsUsed + 1 > limits.maxToolCalls) {
+        throw new BudgetError(
+          "TOOL_LIMIT",
+          createSnapshot(internals),
+          limits.executionId
+        );
+      }
+
+      // 3. Check terminatedReason (TOKEN_LIMIT from between-calls)
+      if (state.terminatedReason) {
+        throw new BudgetError(
+          state.terminatedReason,
+          state.terminatedSnapshot!,
+          limits.executionId
+        );
+      }
+
+      // All checks passed, increment counter
+      state.toolCallsUsed++;
+    },
+  };
+
+  budgetInternals.set(budget, { limits, state, now });
+  return budget;
 }

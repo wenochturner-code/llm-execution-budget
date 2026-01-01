@@ -1,16 +1,4 @@
-// src/index.ts
-// Public API. Tiny. Obvious.
-
-export { DEFAULT_CONFIG, ExecutionBudget, startExecution } from "./budget.js";
-export { guardedResponse } from "./openai.js";
-export { BudgetExceededError, StepLimitExceededError, isGuardError } from "./errors.js";
-
-export type {
-  ExecutionId,
-  GuardConfig,
-  ExecutionInit,
-  BudgetSnapshot,
-  UsageDelta,
-  StopReason,
-} from "./types.js";
-
+export { createBudget } from "./budget.js";
+export { guardedResponse } from "./guard.js";
+export { BudgetError, isBudgetError } from "./errors.js";
+export type { Budget, BudgetLimits, BudgetSnapshot, BudgetReason } from "./types.js";
