@@ -1,3 +1,4 @@
+<img src="banner.png" width="100%" />
 # LLM Execution Guard
 
 Minimal control-plane primitive for limiting worst-case LLM execution costs.
